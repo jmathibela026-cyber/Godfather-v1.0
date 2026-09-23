@@ -23,7 +23,7 @@
   <button class="voice-pill">&#9834; VOICE AI</button>
 </header>
 
-<main class="screen">
+<main class="screen" id="scannerScreen">
 
   <!-- Live chart -->
   <div class="chart-card">
@@ -125,7 +125,14 @@
 
   </section>
 
+
 </main>
+
+<div class="screen placeholder-view hidden" id="placeholderView">
+  <div class="placeholder-view__icon" id="placeholderIcon">&#9889;</div>
+  <div class="placeholder-view__title" id="placeholderTitle">Smart AI</div>
+  <div class="placeholder-view__body" id="placeholderBody">Coming soon.</div>
+</div>
 
 <div class="action-dock" id="scanDock">
   <button class="btn-primary" id="scanBtn">Scan Chart</button>

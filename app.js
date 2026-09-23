@@ -187,6 +187,54 @@
     checklistItems.forEach(el => el.classList.remove('is-done', 'is-active'));
   });
 
+  // ---- Tab bar ----
+  const scannerScreen = document.getElementById('scannerScreen');
+  const placeholderView = document.getElementById('placeholderView');
+  const placeholderIcon = document.getElementById('placeholderIcon');
+  const placeholderTitle = document.getElementById('placeholderTitle');
+  const placeholderBody = document.getElementById('placeholderBody');
+  const scanDock = document.getElementById('scanDock');
+  const resultDock = document.getElementById('resultDock');
+  const resultView = document.getElementById('resultView');
+
+  const placeholderCopy = {
+    smart: { icon: '&#9889;', title: 'Smart AI', body: 'Chat with the Godfather AI persona about your signals. Coming soon.' },
+    metatrader: { icon: '&#128200;', title: 'MetaTrader', body: 'Live positions and account balance via MetaAPI. Coming soon.' },
+    settings: { icon: '&#9881;', title: 'Settings', body: 'API connection status and strategy parameters. Coming soon.' },
+  };
+
+  document.getElementById('tabbar').addEventListener('click', (e) => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    const page = tab.dataset.page;
+
+    [...document.querySelectorAll('.tab')].forEach(t => t.classList.toggle('is-active', t === tab));
+
+    if (page === 'home' || page === 'scanner') {
+      placeholderView.classList.add('hidden');
+      scannerScreen.classList.remove('hidden');
+      // Restore whichever action dock matches the current sub-view (scan setup vs. result)
+      if (resultView.classList.contains('hidden')) {
+        scanDock.classList.remove('hidden');
+        resultDock.classList.add('hidden');
+      } else {
+        scanDock.classList.add('hidden');
+        resultDock.classList.remove('hidden');
+      }
+      return;
+    }
+
+    // Not-yet-built screens: show a responsive placeholder instead of nothing
+    scannerScreen.classList.add('hidden');
+    scanDock.classList.add('hidden');
+    resultDock.classList.add('hidden');
+    const copy = placeholderCopy[page];
+    placeholderIcon.innerHTML = copy.icon;
+    placeholderTitle.textContent = copy.title;
+    placeholderBody.textContent = copy.body;
+    placeholderView.classList.remove('hidden');
+  });
+
   // ---- Init ----
   loadChart();
 
