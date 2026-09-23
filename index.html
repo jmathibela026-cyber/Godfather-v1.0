@@ -17,24 +17,33 @@
 
 <header class="topbar">
   <div class="topbar__left">
-    <button class="topbar__back" aria-label="Back">&#8592;</button>
-    <span class="topbar__title">CHART SCANNER</span>
+    <span class="topbar__title" id="topbarTitle">CHART SCANNER</span>
   </div>
   <button class="voice-pill">&#9834; VOICE AI</button>
 </header>
 
-<main class="screen" id="scannerScreen">
+<!-- ============================= HOME PAGE ============================= -->
+<main class="screen" id="page-home">
 
-  <!-- Live chart -->
-  <div class="chart-card">
-    <canvas id="chartCanvas" width="640" height="420"></canvas>
-    <span class="chart-card__price" id="livePrice">— </span>
+  <!-- Upload zone (shown until a screenshot is picked) -->
+  <div class="upload-zone" id="uploadZone">
+    <div class="upload-zone__icon">&#128248;</div>
+    <div class="upload-zone__title">Upload a chart screenshot</div>
+    <div class="upload-zone__hint">The AI reads the candles directly from your image — no live data feed needed.</div>
+    <button class="btn-primary" id="pickScreenshotBtn" type="button">Choose Screenshot</button>
+    <input type="file" id="screenshotInput" accept="image/*" hidden>
   </div>
 
-  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  <!-- Screenshot preview (shown once a file is picked) -->
+  <div class="chart-card hidden" id="previewCard">
+    <img id="screenshotPreview" alt="Uploaded chart screenshot">
+    <button class="chart-card__clear" id="clearScreenshotBtn" type="button" aria-label="Remove screenshot">&#10005;</button>
+  </div>
+
+  <div class="progress-track hidden" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
 
   <!-- Analysis checklist (animates during scan) -->
-  <ul class="checklist" id="checklist">
+  <ul class="checklist hidden" id="checklist">
     <li class="checklist__item" data-step="0"><span class="checklist__dot"></span>Reading candles &amp; price action</li>
     <li class="checklist__item" data-step="1"><span class="checklist__dot"></span>Scanning market structure (BOS / CHoCH)</li>
     <li class="checklist__item" data-step="2"><span class="checklist__dot"></span>Mapping swing highs &amp; lows</li>
@@ -44,27 +53,40 @@
     <li class="checklist__item" data-step="6"><span class="checklist__dot"></span>Building trade plan (Entry / SL / TP)</li>
   </ul>
 
-  <div class="section-label">SYMBOL</div>
-  <div class="chip-row" id="symbolChips">
-    <button class="chip is-selected" data-value="XAUUSD">XAUUSD</button>
-    <button class="chip" data-value="US30">US30</button>
-    <button class="chip" data-value="GER30">GER30</button>
-    <button class="chip" data-value="USTECH">USTECH</button>
-  </div>
+  <div id="chipSection">
+    <div class="section-label">SYMBOL — INDICES / METALS</div>
+    <div class="chip-row" id="symbolChips">
+      <button class="chip is-selected" data-value="XAUUSD">XAUUSD</button>
+      <button class="chip" data-value="US30">US30</button>
+      <button class="chip" data-value="GER30">GER30</button>
+      <button class="chip" data-value="USTECH">USTECH</button>
+    </div>
 
-  <div class="section-label">STRATEGY</div>
-  <div class="chip-row" id="strategyChips">
-    <button class="chip is-selected" data-value="ict">&#9670; ICT / Smart Money</button>
-    <button class="chip" data-value="price-action" disabled>Price Action</button>
-    <button class="chip" data-value="trend" disabled>Trend</button>
-  </div>
+    <div class="section-label">SYMBOL — FOREX MAJORS</div>
+    <div class="chip-row" id="symbolChipsForex">
+      <button class="chip" data-value="EURUSD">EURUSD</button>
+      <button class="chip" data-value="GBPUSD">GBPUSD</button>
+      <button class="chip" data-value="USDJPY">USDJPY</button>
+      <button class="chip" data-value="USDCHF">USDCHF</button>
+      <button class="chip" data-value="AUDUSD">AUDUSD</button>
+      <button class="chip" data-value="USDCAD">USDCAD</button>
+      <button class="chip" data-value="NZDUSD">NZDUSD</button>
+    </div>
 
-  <div class="section-label">TIMEFRAME</div>
-  <div class="chip-row" id="tfChips">
-    <button class="chip" data-value="M5">M5</button>
-    <button class="chip is-selected" data-value="M15">M15</button>
-    <button class="chip" data-value="H1">H1</button>
-    <button class="chip" data-value="H4">H4</button>
+    <div class="section-label">STRATEGY</div>
+    <div class="chip-row" id="strategyChips">
+      <button class="chip is-selected" data-value="ict">&#9670; ICT / Smart Money</button>
+      <button class="chip" data-value="price-action" disabled>Price Action</button>
+      <button class="chip" data-value="trend" disabled>Trend</button>
+    </div>
+
+    <div class="section-label">TIMEFRAME</div>
+    <div class="chip-row" id="tfChips">
+      <button class="chip" data-value="M5">M5</button>
+      <button class="chip is-selected" data-value="M15">M15</button>
+      <button class="chip" data-value="H1">H1</button>
+      <button class="chip" data-value="H4">H4</button>
+    </div>
   </div>
 
   <!-- Signal result view (shown after a completed scan) -->
@@ -76,10 +98,6 @@
         <div class="signal-toast__title" id="toastTitle">New signal detected</div>
         <div class="signal-toast__body" id="toastBody">from GODFATHER</div>
       </div>
-    </div>
-
-    <div class="chart-card" style="margin-top:14px;">
-      <canvas id="resultCanvas" width="640" height="420"></canvas>
     </div>
 
     <div class="reasoning" id="reasoningBox"></div>
@@ -123,38 +141,59 @@
       </div>
     </div>
 
-  </section>
+    <div class="section-label">NUMBER OF TRADES</div>
+    <div class="chip-row" id="tradeCountRow">
+      <button class="chip trade-count-chip" data-value="1">1</button>
+      <button class="chip trade-count-chip is-selected" data-value="3">3</button>
+      <button class="chip trade-count-chip" data-value="7">7</button>
+      <button class="chip trade-count-chip" data-value="9">9</button>
+    </div>
 
+  </section>
 
 </main>
 
-<div class="screen placeholder-view hidden" id="placeholderView">
-  <div class="placeholder-view__icon" id="placeholderIcon">&#9889;</div>
-  <div class="placeholder-view__title" id="placeholderTitle">Smart AI</div>
-  <div class="placeholder-view__body" id="placeholderBody">Coming soon.</div>
-</div>
+<!-- ============================= SETTINGS PAGE ============================= -->
+<main class="screen hidden" id="page-settings">
+
+  <div class="section-label">AI ANALYSIS</div>
+  <div class="settings-card">
+    <label class="field-label" for="geminiKeyInput">Gemini API Key</label>
+    <input class="field-input" id="geminiKeyInput" type="password" placeholder="AIza..." autocomplete="off">
+    <p class="field-hint">Used to analyze uploaded chart screenshots. Get a key at ai.google.dev.</p>
+  </div>
+
+  <div class="section-label">TRADE EXECUTION — METAAPI CLOUD</div>
+  <div class="settings-card">
+    <label class="field-label" for="metaTokenInput">MetaApi Token</label>
+    <input class="field-input" id="metaTokenInput" type="password" placeholder="eyJhbGciOi..." autocomplete="off">
+
+    <label class="field-label" for="metaAccountInput">MetaApi Account ID</label>
+    <input class="field-input" id="metaAccountInput" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off">
+
+    <label class="field-label" for="metaLotInput">Default Lot Size</label>
+    <input class="field-input" id="metaLotInput" type="number" step="0.01" min="0.01" value="0.01">
+
+    <p class="field-hint">Keys are stored only on this device (localStorage) — never sent anywhere except directly to Google's Gemini API and your MetaApi Cloud account.</p>
+  </div>
+
+  <button class="btn-primary" id="saveSettingsBtn" type="button">Save Settings</button>
+  <div class="settings-status hidden" id="settingsStatus">Saved ✓</div>
+
+</main>
 
 <div class="action-dock" id="scanDock">
-  <button class="btn-primary" id="scanBtn">Scan Chart</button>
+  <button class="btn-primary" id="scanBtn" disabled>Upload a screenshot first</button>
 </div>
 
 <div class="action-dock hidden" id="resultDock">
-  <button class="btn-primary" id="confirmTradeBtn">Confirm &amp; Send Trade</button>
+  <button class="btn-primary" id="confirmTradeBtn">Confirm &amp; Execute 3 Trades</button>
   <button class="btn-secondary" id="scanAgainBtn">Scan Another Chart</button>
 </div>
 
 <nav class="tabbar" id="tabbar">
-  <button class="tab" data-page="smart">
-    <span class="tab__icon">&#9889;</span>SMART
-  </button>
-  <button class="tab" data-page="metatrader">
-    <span class="tab__icon">&#128200;</span>METATRADER
-  </button>
   <button class="tab tab--home is-active" data-page="home">
     <span class="tab__icon">&#8962;</span>HOME
-  </button>
-  <button class="tab" data-page="scanner">
-    <span class="tab__icon">&#9834;</span>SCANNER
   </button>
   <button class="tab" data-page="settings">
     <span class="tab__icon">&#9881;</span>SETTINGS
@@ -163,6 +202,7 @@
 
 <script src="chart.js"></script>
 <script src="scanner.js"></script>
+<script src="api.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'godfather-v1';
+const CACHE_NAME = 'godfather-v2';
 const APP_SHELL = [
   './',
   './index.html',
