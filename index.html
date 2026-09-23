@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0b070c">
+<title>Godfather — Chart Scanner</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__left">
+    <button class="topbar__back" aria-label="Back">&#8592;</button>
+    <span class="topbar__title">CHART SCANNER</span>
+  </div>
+  <button class="voice-pill">&#9834; VOICE AI</button>
+</header>
+
+<main class="screen">
+
+  <!-- Live chart -->
+  <div class="chart-card">
+    <canvas id="chartCanvas" width="640" height="420"></canvas>
+    <span class="chart-card__price" id="livePrice">— </span>
+  </div>
+
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+  <!-- Analysis checklist (animates during scan) -->
+  <ul class="checklist" id="checklist">
+    <li class="checklist__item" data-step="0"><span class="checklist__dot"></span>Reading candles &amp; price action</li>
+    <li class="checklist__item" data-step="1"><span class="checklist__dot"></span>Scanning market structure (BOS / CHoCH)</li>
+    <li class="checklist__item" data-step="2"><span class="checklist__dot"></span>Mapping swing highs &amp; lows</li>
+    <li class="checklist__item" data-step="3"><span class="checklist__dot"></span>Detecting order blocks &amp; FVGs</li>
+    <li class="checklist__item" data-step="4"><span class="checklist__dot"></span>Locating liquidity pools (BSL / SSL)</li>
+    <li class="checklist__item" data-step="5"><span class="checklist__dot"></span>Confirming premium / discount bias</li>
+    <li class="checklist__item" data-step="6"><span class="checklist__dot"></span>Building trade plan (Entry / SL / TP)</li>
+  </ul>
+
+  <div class="section-label">SYMBOL</div>
+  <div class="chip-row" id="symbolChips">
+    <button class="chip is-selected" data-value="XAUUSD">XAUUSD</button>
+    <button class="chip" data-value="US30">US30</button>
+    <button class="chip" data-value="GER30">GER30</button>
+    <button class="chip" data-value="USTECH">USTECH</button>
+  </div>
+
+  <div class="section-label">STRATEGY</div>
+  <div class="chip-row" id="strategyChips">
+    <button class="chip is-selected" data-value="ict">&#9670; ICT / Smart Money</button>
+    <button class="chip" data-value="price-action" disabled>Price Action</button>
+    <button class="chip" data-value="trend" disabled>Trend</button>
+  </div>
+
+  <div class="section-label">TIMEFRAME</div>
+  <div class="chip-row" id="tfChips">
+    <button class="chip" data-value="M5">M5</button>
+    <button class="chip is-selected" data-value="M15">M15</button>
+    <button class="chip" data-value="H1">H1</button>
+    <button class="chip" data-value="H4">H4</button>
+  </div>
+
+  <!-- Signal result view (shown after a completed scan) -->
+  <section id="resultView" class="hidden">
+
+    <div class="signal-toast">
+      <div class="signal-toast__icon">&#129302;</div>
+      <div>
+        <div class="signal-toast__title" id="toastTitle">New signal detected</div>
+        <div class="signal-toast__body" id="toastBody">from GODFATHER</div>
+      </div>
+    </div>
+
+    <div class="chart-card" style="margin-top:14px;">
+      <canvas id="resultCanvas" width="640" height="420"></canvas>
+    </div>
+
+    <div class="reasoning" id="reasoningBox"></div>
+
+    <div class="signal-card">
+      <div class="signal-card__head">
+        <div class="signal-card__symbol" id="cardSymbol">
+          <span class="arrow">&#8595;</span> XAUUSD
+        </div>
+        <div class="direction-badge" id="cardBadge">SELL</div>
+      </div>
+
+      <div class="metric-row">
+        <div class="metric-box metric-box--entry">
+          <div class="metric-box__label">&#10022; ENTRY</div>
+          <div class="metric-box__value" id="cardEntry">—</div>
+        </div>
+        <div class="metric-box metric-box--sl">
+          <div class="metric-box__label">&#8862; SL</div>
+          <div class="metric-box__value" id="cardSL">—</div>
+        </div>
+        <div class="metric-box metric-box--tp">
+          <div class="metric-box__label">&#9678; TP</div>
+          <div class="metric-box__value" id="cardTP">—</div>
+        </div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-item">
+          <div class="detail-item__label">&#9889; Strategy</div>
+          <div class="detail-item__value" id="cardStrategy">ICT / Smart Money</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-item__label">&#8986; Timeframe</div>
+          <div class="detail-item__value" id="cardTimeframe">M15</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-item__label">&#9678; Confidence</div>
+          <div class="detail-item__value" id="cardConfidence">—</div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+<div class="action-dock" id="scanDock">
+  <button class="btn-primary" id="scanBtn">Scan Chart</button>
+</div>
+
+<div class="action-dock hidden" id="resultDock">
+  <button class="btn-primary" id="confirmTradeBtn">Confirm &amp; Send Trade</button>
+  <button class="btn-secondary" id="scanAgainBtn">Scan Another Chart</button>
+</div>
+
+<nav class="tabbar" id="tabbar">
+  <button class="tab" data-page="smart">
+    <span class="tab__icon">&#9889;</span>SMART
+  </button>
+  <button class="tab" data-page="metatrader">
+    <span class="tab__icon">&#128200;</span>METATRADER
+  </button>
+  <button class="tab tab--home is-active" data-page="home">
+    <span class="tab__icon">&#8962;</span>HOME
+  </button>
+  <button class="tab" data-page="scanner">
+    <span class="tab__icon">&#9834;</span>SCANNER
+  </button>
+  <button class="tab" data-page="settings">
+    <span class="tab__icon">&#9881;</span>SETTINGS
+  </button>
+</nav>
+
+<script src="chart.js"></script>
+<script src="scanner.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
