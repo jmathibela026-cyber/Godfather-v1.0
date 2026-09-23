@@ -25,20 +25,12 @@
 <!-- ============================= HOME PAGE ============================= -->
 <main class="screen" id="page-home">
 
-  <!-- Upload zone (shown until a screenshot is picked) -->
-  <div class="upload-zone" id="uploadZone">
-    <div class="upload-zone__icon">&#128248;</div>
-    <div class="upload-zone__title">Upload a chart screenshot</div>
-    <div class="upload-zone__hint">The AI reads the candles directly from your image — no live data feed needed.</div>
-    <button class="btn-primary" id="pickScreenshotBtn" type="button">Choose Screenshot</button>
-    <input type="file" id="screenshotInput" accept="image/*" hidden>
+  <!-- Live chart -->
+  <div class="chart-card" id="liveCard">
+    <canvas id="chartCanvas" width="640" height="420"></canvas>
+    <span class="chart-card__price" id="livePrice">— </span>
   </div>
-
-  <!-- Screenshot preview (shown once a file is picked) -->
-  <div class="chart-card hidden" id="previewCard">
-    <img id="screenshotPreview" alt="Uploaded chart screenshot">
-    <button class="chart-card__clear" id="clearScreenshotBtn" type="button" aria-label="Remove screenshot">&#10005;</button>
-  </div>
+  <div class="field-hint" id="chartStatus" style="margin-top:8px;"></div>
 
   <div class="progress-track hidden" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
 
@@ -100,6 +92,10 @@
       </div>
     </div>
 
+    <div class="chart-card" style="margin-top:14px;">
+      <canvas id="resultCanvas" width="640" height="420"></canvas>
+    </div>
+
     <div class="reasoning" id="reasoningBox"></div>
 
     <div class="signal-card">
@@ -156,11 +152,11 @@
 <!-- ============================= SETTINGS PAGE ============================= -->
 <main class="screen hidden" id="page-settings">
 
-  <div class="section-label">AI ANALYSIS</div>
+  <div class="section-label">LIVE CHART DATA — TWELVE DATA</div>
   <div class="settings-card">
-    <label class="field-label" for="geminiKeyInput">Gemini API Key</label>
-    <input class="field-input" id="geminiKeyInput" type="password" placeholder="AIza..." autocomplete="off">
-    <p class="field-hint">Used to analyze uploaded chart screenshots. Get a key at ai.google.dev.</p>
+    <label class="field-label" for="twelveDataKeyInput">Twelve Data API Key</label>
+    <input class="field-input" id="twelveDataKeyInput" type="password" placeholder="your Twelve Data key" autocomplete="off">
+    <p class="field-hint">Powers the live chart. Get a free key at twelvedata.com. Note: index symbols (US30/GER30/USTECH) use Twelve Data's own tickers (DJI/GDAXI/NDX) behind the scenes — availability depends on your Twelve Data plan.</p>
   </div>
 
   <div class="section-label">TRADE EXECUTION — METAAPI CLOUD</div>
@@ -174,7 +170,7 @@
     <label class="field-label" for="metaLotInput">Default Lot Size</label>
     <input class="field-input" id="metaLotInput" type="number" step="0.01" min="0.01" value="0.01">
 
-    <p class="field-hint">Keys are stored only on this device (localStorage) — never sent anywhere except directly to Google's Gemini API and your MetaApi Cloud account.</p>
+    <p class="field-hint">Powers trade execution only now. Stored only on this device (localStorage).</p>
   </div>
 
   <button class="btn-primary" id="saveSettingsBtn" type="button">Save Settings</button>
@@ -183,7 +179,7 @@
 </main>
 
 <div class="action-dock" id="scanDock">
-  <button class="btn-primary" id="scanBtn" disabled>Upload a screenshot first</button>
+  <button class="btn-primary" id="scanBtn">Scan Chart</button>
 </div>
 
 <div class="action-dock hidden" id="resultDock">

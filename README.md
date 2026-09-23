@@ -1,88 +1,91 @@
-# Godfather — AI Chart Scanner (v2, Screenshot Mode)
+# Godfather — AI Chart Scanner (v4, Live Chart via Twelve Data)
 
-Installable web app (PWA) where you upload a chart screenshot, an AI
-(Gemini) reads it using ICT / Smart Money concepts and returns a BUY /
-SELL / WAIT signal with Entry, Stop Loss and Take Profit, and you can
-execute a batch of trades straight into your MT4/5 account via MetaApi
-Cloud.
+Installable web app (PWA) that pulls a **live chart** for your chosen
+symbol from Twelve Data, runs it through a local ICT "Liquidity Sweep"
+rule engine, and produces a BUY / SELL / WAIT signal with Entry, Stop
+Loss and Take Profit — then lets you fire a batch of trades into your
+MT4/5 account via MetaApi Cloud.
 
-## What changed from v1
+## What changed from v3
 
-v1 fetched/generated OHLC candle data and ran it through a local rule
-engine (`scanner.js`). v2 instead sends your uploaded **screenshot**
-directly to the Gemini API and asks it to read the chart and reason
-about the setup itself. `scanner.js` is kept in the repo (it's solid,
-deterministic ICT logic) but isn't wired into the main flow anymore —
-useful if you ever reconnect a live candle feed later.
+v3 pulled live candles from MetaApi Cloud. v4 splits the two jobs
+between two providers, which is closer to the original v1 plan:
 
-- **Nav** simplified to two bottom tabs: **Home** and **Settings**
-  (both still bottom-anchored).
-- **Home**: upload a screenshot → AI analyzes it → signal card →
-  choose number of trades (1/3/7/9) → Confirm & Execute.
-- **Settings**: where you paste your own **Gemini API key** and
-  **MetaApi Cloud** token/account ID. Saved to `localStorage` on your
-  device only.
-- **Symbols**: added a Forex Majors row (EURUSD, GBPUSD, USDJPY,
-  USDCHF, AUDUSD, USDCAD, NZDUSD) alongside the original
-  XAUUSD/US30/GER30/USTECH row.
-- Fixed a v1 bug: `api.js` was never actually `<script>`-included in
-  `index.html`, so `GodfatherAPI` was undefined and every candle
-  request silently fell back to mock data. It's included now.
+- **Twelve Data** → live/historical candle data for the chart and the
+  scan engine.
+- **MetaApi Cloud** → trade execution only (placing orders on your
+  connected MT4/5 account, and reading open positions).
+
+Everything else is unchanged: `scanner.js` still does the actual
+analysis locally (no AI/LLM in the loop), two bottom tabs (Home /
+Settings), Forex Majors symbol row, trade-count selector.
+
+## Settings now has two sections
+
+1. **Live Chart Data — Twelve Data**: paste a Twelve Data API key
+   (free tier at [twelvedata.com](https://twelvedata.com)).
+2. **Trade Execution — MetaApi Cloud**: token, account ID, lot size
+   (unchanged from v3).
 
 ## Important: this is a personal-use architecture, not multi-tenant
 
-Because your Gemini and MetaApi keys are entered in Settings and used
-directly from the browser (`api.js`), they live in this browser's
-`localStorage` and are sent straight to Google/MetaApi — there is no
-backend hiding them. That's fine for **your own device, your own
-keys, your own trading account**. It stops being fine the moment
-anyone else uses this build: don't publish this as a public site with
-your keys already filled in, and don't hand this codebase to other
-users expecting them to bring their own keys without you re-adding a
-server-side proxy (see v1's original `/api/*` design if you need
-that later).
+Both keys are entered in Settings and used directly from the browser
+(`api.js`) — they live in this browser's `localStorage` and are sent
+straight to Twelve Data / MetaApi Cloud. That's fine for **your own
+device, your own keys, your own account**. Don't publish this as a
+public site with your keys already filled in, and don't hand this
+codebase to other users without adding a server-side proxy back in.
 
 ## Project structure
 
 ```
 godfather/
-├── index.html            Home (upload + scan) and Settings pages
+├── index.html            Home (live chart + scan) and Settings pages
 ├── manifest.json          PWA manifest (installability)
-├── service-worker.js       Offline app-shell caching (cache bumped to v2)
+├── service-worker.js       Offline app-shell caching (cache bumped to v4)
 ├── tokens.css              Design tokens (color, type, radius)
 ├── app.css                 Component + layout styles
-├── chart.js                Canvas candlestick renderer (currently unused, kept for later)
-├── scanner.js               GodfatherEngine — ICT rule engine (currently unused, kept for later)
-├── api.js                    Gemini screenshot analysis + MetaApi Cloud trade execution + settings storage
-├── app.js                     App controller: upload flow, scan animation, result + settings wiring
+├── chart.js                Canvas candlestick renderer, with SL/Entry/TP overlay
+├── scanner.js               GodfatherEngine — the ICT Liquidity Sweep rule engine
+├── api.js                    Twelve Data candles + MetaApi Cloud trade execution + settings storage
+├── app.js                     App controller: live polling, scan animation, result + settings wiring
 └── icons/                     App icons
 ```
 
 ## Setup
 
-1. Get a **Gemini API key** at [ai.google.dev](https://ai.google.dev).
-2. Get a **MetaApi Cloud** account at [metaapi.cloud](https://metaapi.cloud),
-   connect your MT4/5 account, and grab its **Account ID** and an
-   **auth token**.
+1. Get a **Twelve Data** API key (free tier: 800 calls/day, 8/min —
+   fine for personal use with the 15s chart refresh this app does).
+2. Get a **MetaApi Cloud** account, connect your MT4/5 account, and
+   grab its **Account ID** and an **auth token**.
 3. Open the app → **Settings** → paste both in → **Save Settings**.
-4. Go to **Home** → upload a chart screenshot → **Scan Chart**.
+4. Go to **Home** — the live chart should start loading. Tap
+   **Scan Chart** once candles are showing.
 
-### One thing to check before going live: MetaApi region
+### Things to verify before going live
 
-`api.js` currently calls MetaApi's `mt-client-api-v1.new-york.agiliumtrade.ai`
-endpoint directly. MetaApi accounts are provisioned in a specific
-region, and the correct host can differ from New York — call MetaApi's
-provisioning API (`GET /users/current/accounts/{id}`) once to read the
-account's real region, then update the host in `api.js`, or trades
-will fail with a routing error.
+1. **Index symbols.** Twelve Data doesn't use broker CFD names like
+   US30/GER30/USTECH — `api.js` maps them to Twelve Data's own tickers
+   (`DJI`, `GDAXI`, `NDX`). Whether those resolve depends on your
+   Twelve Data plan (indices are sometimes gated to paid tiers) — if a
+   chart won't load for one of these, check Twelve Data's symbol
+   search for the exact ticker your plan has access to and adjust
+   `TD_SYMBOL_MAP` in `api.js`.
+2. **MetaApi region.** The trade/positions hosts in `api.js` are
+   hardcoded to MetaApi's `new-york` region (`REGION` constant). If
+   your account is provisioned elsewhere, update it or trade requests
+   will fail to route.
+3. **Rate limits.** The free Twelve Data tier caps at 8 requests/min.
+   The 15s auto-refresh on Home uses 1 call per refresh — fine solo,
+   but leave multiple tabs open and you'll hit the limit.
 
 ## Still to build
 
 - Live Positions / Account screen (MetaApi open positions, close/modify)
-- Verifying the MetaApi regional endpoint automatically instead of
-  hardcoding `new-york`
-- Reconnecting `scanner.js` as an optional path if you bring back a
-  live candle feed alongside screenshot mode
+- Auto-detecting the MetaApi region instead of hardcoding it
+- A symbol picker backed by Twelve Data's `/symbol_search` endpoint
+  instead of a hardcoded ticker map, so any instrument your plan
+  supports "just works"
 
 ## Local preview
 

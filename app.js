@@ -6,9 +6,15 @@
   const state = {
     symbol: 'XAUUSD',
     timeframe: 'M15',
+    htfTimeframe: 'H4',
     tradeCount: 3,
-    screenshot: null, // { base64, mimeType }
   };
+
+  const scanCanvas = document.getElementById('chartCanvas');
+  const resultCanvas = document.getElementById('resultCanvas');
+  const liveChart = new CandleChart(scanCanvas);
+  const resultChart = new CandleChart(resultCanvas);
+  const chartStatus = document.getElementById('chartStatus');
 
   // ---- Page nav (Home / Settings) ----
   const pages = {
@@ -58,51 +64,40 @@
   wireChipGroup('symbolChips', (v) => {
     [...forexChips.children].forEach(c => c.classList.remove('is-selected'));
     state.symbol = v;
+    loadChart();
   });
   wireChipGroup('symbolChipsForex', (v) => {
     [...indexChips.children].forEach(c => c.classList.remove('is-selected'));
     state.symbol = v;
+    loadChart();
   });
-  wireChipGroup('tfChips', (v) => { state.timeframe = v; });
+  wireChipGroup('tfChips', (v) => { state.timeframe = v; loadChart(); });
   wireChipGroup('tradeCountRow', (v) => {
     state.tradeCount = parseInt(v, 10);
     document.getElementById('confirmTradeBtn').textContent = `Confirm & Execute ${v} Trade${v === '1' ? '' : 's'}`;
   });
 
-  // ---- Screenshot upload ----
-  const screenshotInput = document.getElementById('screenshotInput');
-  const uploadZone = document.getElementById('uploadZone');
-  const previewCard = document.getElementById('previewCard');
-  const screenshotPreview = document.getElementById('screenshotPreview');
-  const scanBtn = document.getElementById('scanBtn');
+  // ---- Live chart (polls MetaApi Cloud) ----
+  let currentCandles = [];
+  let pollTimer = null;
 
-  document.getElementById('pickScreenshotBtn').addEventListener('click', () => screenshotInput.click());
+  async function loadChart() {
+    try {
+      chartStatus.textContent = 'Loading live candles…';
+      currentCandles = await GodfatherAPI.getCandles(state.symbol, state.timeframe, 100);
+      liveChart.setCandles(currentCandles);
+      const last = currentCandles[currentCandles.length - 1];
+      document.getElementById('livePrice').textContent = last ? last.c.toFixed(2) : '—';
+      chartStatus.textContent = '';
+    } catch (e) {
+      chartStatus.textContent = e.message;
+    }
+  }
 
-  screenshotInput.addEventListener('change', () => {
-    const file = screenshotInput.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result; // "data:image/png;base64,AAAA..."
-      const [, mimeType, base64] = dataUrl.match(/^data:(.+);base64,(.*)$/);
-      state.screenshot = { base64, mimeType };
-      screenshotPreview.src = dataUrl;
-      uploadZone.classList.add('hidden');
-      previewCard.classList.remove('hidden');
-      scanBtn.disabled = false;
-      scanBtn.textContent = 'Scan Chart';
-    };
-    reader.readAsDataURL(file);
-  });
-
-  document.getElementById('clearScreenshotBtn').addEventListener('click', () => {
-    state.screenshot = null;
-    screenshotInput.value = '';
-    previewCard.classList.add('hidden');
-    uploadZone.classList.remove('hidden');
-    scanBtn.disabled = true;
-    scanBtn.textContent = 'Upload a screenshot first';
-  });
+  function startPolling() {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(loadChart, 15000); // refresh every 15s
+  }
 
   // ---- Scan animation ----
   const checklistItems = [...document.querySelectorAll('.checklist__item')];
@@ -129,23 +124,19 @@
   }
 
   // ---- Scan button ----
-  scanBtn.addEventListener('click', () => {
-    if (!state.screenshot) return;
-    scanBtn.disabled = true;
+  document.getElementById('scanBtn').addEventListener('click', () => {
+    const btn = document.getElementById('scanBtn');
+    btn.disabled = true;
     runScanAnimation(async () => {
       try {
-        const signal = await GodfatherAPI.analyzeScreenshot({
-          imageBase64: state.screenshot.base64,
-          mimeType: state.screenshot.mimeType,
-          symbol: state.symbol,
-          strategy: 'ICT / Smart Money',
-          timeframe: state.timeframe,
-        });
-        showResult(signal);
+        const htfCandles = await GodfatherAPI.getCandles(state.symbol, state.htfTimeframe, 100);
+        const ltfCandles = await GodfatherAPI.getCandles(state.symbol, state.timeframe, 100);
+        const signal = GodfatherEngine.analyze(htfCandles, ltfCandles);
+        showResult(signal, ltfCandles);
       } catch (e) {
         showError(e.message);
       }
-      scanBtn.disabled = false;
+      btn.disabled = false;
     });
   });
 
@@ -154,7 +145,7 @@
     document.getElementById('progressTrack').classList.add('hidden');
     document.getElementById('resultView').classList.remove('hidden');
     document.getElementById('chipSection').classList.add('hidden');
-    document.getElementById('toastTitle').textContent = 'Could not analyze screenshot';
+    document.getElementById('toastTitle').textContent = 'Could not complete scan';
     document.getElementById('toastBody').textContent = message;
     document.getElementById('reasoningBox').innerHTML = `<strong>ERROR</strong> ${message}`;
     document.querySelector('.signal-card').classList.add('hidden');
@@ -165,7 +156,7 @@
   }
 
   // ---- Render result screen ----
-  function showResult(signal) {
+  function showResult(signal, candles) {
     document.getElementById('scanDock').classList.add('hidden');
     document.getElementById('resultDock').classList.remove('hidden');
     document.getElementById('resultView').classList.remove('hidden');
@@ -173,15 +164,17 @@
     document.getElementById('checklist').classList.add('hidden');
     document.getElementById('progressTrack').classList.add('hidden');
     document.getElementById('chipSection').classList.add('hidden');
-    previewCard.classList.add('hidden');
+    document.getElementById('liveCard').classList.add('hidden');
 
-    if (signal.verdict === 'wait' || !signal.entry) {
+    if (signal.verdict === 'wait') {
       document.getElementById('toastTitle').textContent = 'No trade yet';
-      document.getElementById('toastBody').textContent = signal.reasoning || 'No valid setup detected in this screenshot.';
-      document.getElementById('reasoningBox').innerHTML = `<strong>WAIT</strong> — ${signal.reasoning || ''}`;
+      document.getElementById('toastBody').textContent = signal.reason;
+      document.getElementById('reasoningBox').innerHTML = `<strong>WAIT</strong> — ${signal.reason}`;
       document.querySelector('.signal-card').classList.add('hidden');
       document.getElementById('tradeCountRow').classList.add('hidden');
       document.getElementById('confirmTradeBtn').classList.add('hidden');
+      resultChart.setCandles(candles);
+      resultChart.setOverlay(null);
       return;
     }
     document.querySelector('.signal-card').classList.remove('hidden');
@@ -190,10 +183,10 @@
     const isBuy = signal.verdict === 'buy';
     document.getElementById('toastTitle').textContent = 'New signal detected';
     document.getElementById('toastBody').textContent =
-      `${signal.verdict.toUpperCase()} ${state.symbol} • ${state.timeframe} • ${signal.confidence ?? '—'}% confidence`;
+      `${signal.verdict.toUpperCase()} ${state.symbol} • ${state.timeframe} • ${signal.confidence}% confidence`;
 
     document.getElementById('reasoningBox').innerHTML =
-      `<strong>${(signal.strategy || 'ICT / Smart Money').toUpperCase()}</strong> ${signal.reasoning || ''}`;
+      `<strong>${signal.strategy.toUpperCase()}</strong> ${signal.reasoning}`;
 
     const symbolEl = document.getElementById('cardSymbol');
     symbolEl.className = `signal-card__symbol ${isBuy ? 'is-buy' : 'is-sell'}`;
@@ -203,12 +196,15 @@
     badge.textContent = isBuy ? 'BUY' : 'SELL';
     badge.className = `direction-badge ${isBuy ? 'buy' : 'sell'}`;
 
-    document.getElementById('cardEntry').textContent = Number(signal.entry).toFixed(2);
-    document.getElementById('cardSL').textContent = Number(signal.sl).toFixed(2);
-    document.getElementById('cardTP').textContent = Number(signal.tp).toFixed(2);
-    document.getElementById('cardStrategy').textContent = signal.strategy || 'ICT / Smart Money';
+    document.getElementById('cardEntry').textContent = signal.entry.toFixed(2);
+    document.getElementById('cardSL').textContent = signal.sl.toFixed(2);
+    document.getElementById('cardTP').textContent = signal.tp.toFixed(2);
+    document.getElementById('cardStrategy').textContent = signal.strategy;
     document.getElementById('cardTimeframe').textContent = state.timeframe;
-    document.getElementById('cardConfidence').textContent = signal.confidence != null ? `${signal.confidence}%` : '—';
+    document.getElementById('cardConfidence').textContent = `${signal.confidence}%`;
+
+    resultChart.setCandles(candles);
+    resultChart.setOverlay({ entry: signal.entry, sl: signal.sl, tp: signal.tp, direction: signal.verdict });
 
     window._lastSignal = signal;
   }
@@ -250,21 +246,17 @@
     document.getElementById('resultDock').classList.add('hidden');
     document.getElementById('chipSection').classList.remove('hidden');
     document.getElementById('confirmTradeBtn').classList.remove('hidden');
-    state.screenshot = null;
-    screenshotInput.value = '';
-    previewCard.classList.add('hidden');
-    uploadZone.classList.remove('hidden');
-    scanBtn.disabled = true;
-    scanBtn.textContent = 'Upload a screenshot first';
+    document.getElementById('liveCard').classList.remove('hidden');
     document.getElementById('scanDock').classList.remove('hidden');
     progressFill.style.width = '0%';
     checklistItems.forEach(el => el.classList.remove('is-done', 'is-active'));
+    loadChart();
   });
 
   // ---- Settings page ----
   function loadSettingsForm() {
     const s = GodfatherAPI.getSettings();
-    document.getElementById('geminiKeyInput').value = s.geminiKey || '';
+    document.getElementById('twelveDataKeyInput').value = s.twelveDataKey || '';
     document.getElementById('metaTokenInput').value = s.metaToken || '';
     document.getElementById('metaAccountInput').value = s.metaAccountId || '';
     document.getElementById('metaLotInput').value = s.metaLot || '0.01';
@@ -272,7 +264,7 @@
 
   document.getElementById('saveSettingsBtn').addEventListener('click', () => {
     GodfatherAPI.saveSettings({
-      geminiKey: document.getElementById('geminiKeyInput').value.trim(),
+      twelveDataKey: document.getElementById('twelveDataKeyInput').value.trim(),
       metaToken: document.getElementById('metaTokenInput').value.trim(),
       metaAccountId: document.getElementById('metaAccountInput').value.trim(),
       metaLot: document.getElementById('metaLotInput').value.trim(),
@@ -280,10 +272,13 @@
     const status = document.getElementById('settingsStatus');
     status.classList.remove('hidden');
     setTimeout(() => status.classList.add('hidden'), 2000);
+    loadChart(); // credentials may have just been added/fixed
   });
 
   // ---- Init ----
   loadSettingsForm();
+  loadChart();
+  startPolling();
 
   // ---- Register service worker ----
   if ('serviceWorker' in navigator) {
