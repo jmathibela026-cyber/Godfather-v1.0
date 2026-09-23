@@ -32,8 +32,10 @@
     if (name !== 'home') {
       document.getElementById('scanDock').classList.add('hidden');
       document.getElementById('resultDock').classList.add('hidden');
+      stopPolling();
     } else if (document.getElementById('resultView').classList.contains('hidden')) {
       document.getElementById('scanDock').classList.remove('hidden');
+      startPolling();
     } else {
       document.getElementById('resultDock').classList.remove('hidden');
     }
@@ -96,7 +98,11 @@
 
   function startPolling() {
     clearInterval(pollTimer);
-    pollTimer = setInterval(loadChart, 15000); // refresh every 15s
+    pollTimer = setInterval(loadChart, 45000); // refresh every 45s — stay under Twelve Data's free-tier 8/min limit
+  }
+
+  function stopPolling() {
+    clearInterval(pollTimer);
   }
 
   // ---- Scan animation ----
@@ -127,10 +133,13 @@
   document.getElementById('scanBtn').addEventListener('click', () => {
     const btn = document.getElementById('scanBtn');
     btn.disabled = true;
+    stopPolling(); // no live-chart requests while scanning / viewing a result
     runScanAnimation(async () => {
       try {
+        // Reuse the LTF candles the live chart already has (at most 45s
+        // stale) instead of spending a second Twelve Data request on it.
         const htfCandles = await GodfatherAPI.getCandles(state.symbol, state.htfTimeframe, 100);
-        const ltfCandles = await GodfatherAPI.getCandles(state.symbol, state.timeframe, 100);
+        const ltfCandles = currentCandles.length ? currentCandles : await GodfatherAPI.getCandles(state.symbol, state.timeframe, 100);
         const signal = GodfatherEngine.analyze(htfCandles, ltfCandles);
         showResult(signal, ltfCandles);
       } catch (e) {
@@ -251,6 +260,7 @@
     progressFill.style.width = '0%';
     checklistItems.forEach(el => el.classList.remove('is-done', 'is-active'));
     loadChart();
+    startPolling();
   });
 
   // ---- Settings page ----

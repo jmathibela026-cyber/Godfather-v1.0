@@ -77,6 +77,9 @@ const GodfatherAPI = (() => {
       `&outputsize=${count}&order=ASC&apikey=${twelveDataKey}`;
 
     const res = await fetch(url);
+    if (res.status === 429) {
+      throw new Error('Twelve Data rate limit hit (free tier: 8 requests/min). Wait about 30–60s and try again.');
+    }
     if (!res.ok) throw new Error(`Candle fetch failed: ${res.status}`);
     const data = await res.json();
 
