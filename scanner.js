@@ -36,36 +36,39 @@ const GodfatherEngine = (() => {
   }
 
   // ---- Step 1: HTF single-candle liquidity sweep ----
-  function detectSweep(htfCandles) {
+  // Scans back over the recent candles (not just the very last one) so a
+  // sweep that happened a few bars ago is still picked up.
+  function detectSweep(htfCandles, lookbackBars = 20) {
     const { swingHighs, swingLows } = findSwings(htfCandles);
     if (!swingLows.length || !swingHighs.length) return null;
 
-    const lastLow = swingLows[swingLows.length - 1];
-    const lastHigh = swingHighs[swingHighs.length - 1];
-    const last = htfCandles.length - 1;
-    const sweepCandle = htfCandles[last - 1];
-    const confirmCandle = htfCandles[last];
-    if (!sweepCandle || !confirmCandle) return null;
+    const start = htfCandles.length - 2;
+    const end = Math.max(1, start - lookbackBars);
 
-    // Bullish sweep: wicks below last swing low, then next candle holds above it
-    if (sweepCandle.l < lastLow.price && confirmCandle.l >= sweepCandle.l) {
-      return {
-        direction: 'buy',
-        sweptLevel: lastLow.price,
-        sweepCandle,
-        confirmCandle,
-        valid: confirmCandle.c > sweepCandle.o, // confirm candle didn't close back below
-      };
-    }
-    // Bearish sweep: wicks above last swing high, then next candle holds below it
-    if (sweepCandle.h > lastHigh.price && confirmCandle.h <= sweepCandle.h) {
-      return {
-        direction: 'sell',
-        sweptLevel: lastHigh.price,
-        sweepCandle,
-        confirmCandle,
-        valid: confirmCandle.c < sweepCandle.o,
-      };
+    for (let i = start; i >= end; i--) {
+      const sweepCandle = htfCandles[i];
+      const confirmCandle = htfCandles[i + 1];
+      if (!sweepCandle || !confirmCandle) continue;
+
+      const priorLows = swingLows.filter(s => s.i < i);
+      const priorHighs = swingHighs.filter(s => s.i < i);
+      const lastLow = priorLows[priorLows.length - 1];
+      const lastHigh = priorHighs[priorHighs.length - 1];
+
+      // Bullish sweep: wicks below last swing low, then next candle holds above it
+      if (lastLow && sweepCandle.l < lastLow.price && confirmCandle.l >= sweepCandle.l) {
+        const valid = confirmCandle.c > sweepCandle.o;
+        if (valid) {
+          return { direction: 'buy', sweptLevel: lastLow.price, sweepCandle, confirmCandle, valid };
+        }
+      }
+      // Bearish sweep: wicks above last swing high, then next candle holds below it
+      if (lastHigh && sweepCandle.h > lastHigh.price && confirmCandle.h <= sweepCandle.h) {
+        const valid = confirmCandle.c < sweepCandle.o;
+        if (valid) {
+          return { direction: 'sell', sweptLevel: lastHigh.price, sweepCandle, confirmCandle, valid };
+        }
+      }
     }
     return null;
   }
@@ -246,24 +249,35 @@ const MarketMakerMatrixEngine = (() => {
   }
 
   // ---- Step 1: liquidity grab beyond a swing extreme on the HTF ----
-  function detectLiquidityGrab(htfCandles) {
+  // Scans back over the recent candles (not just the very last one) so a
+  // grab that happened a few bars ago is still picked up.
+  function detectLiquidityGrab(htfCandles, lookbackBars = 20) {
     const { swingHighs, swingLows } = findSwings(htfCandles);
     if (!swingHighs.length || !swingLows.length) return null;
 
-    const lastLow = swingLows[swingLows.length - 1];
-    const lastHigh = swingHighs[swingHighs.length - 1];
-    const last = htfCandles.length - 1;
-    const grabCandle = htfCandles[last - 1];
-    const holdCandle = htfCandles[last];
-    if (!grabCandle || !holdCandle) return null;
+    const start = htfCandles.length - 2;
+    const end = Math.max(1, start - lookbackBars);
 
-    // Induced low wicked through, then price holds above it -> bullish bias
-    if (grabCandle.l < lastLow.price && holdCandle.l >= grabCandle.l && holdCandle.c > grabCandle.o) {
-      return { direction: 'buy', originLevel: grabCandle.l, grabCandle, holdCandle };
-    }
-    // Induced high wicked through, then price holds below it -> bearish bias
-    if (grabCandle.h > lastHigh.price && holdCandle.h <= grabCandle.h && holdCandle.c < grabCandle.o) {
-      return { direction: 'sell', originLevel: grabCandle.h, grabCandle, holdCandle };
+    for (let i = start; i >= end; i--) {
+      const grabCandle = htfCandles[i];
+      const holdCandle = htfCandles[i + 1];
+      if (!grabCandle || !holdCandle) continue;
+
+      // Use the swing context as it stood at that point in time, not the
+      // single most-recent swing in the whole series.
+      const priorLows = swingLows.filter(s => s.i < i);
+      const priorHighs = swingHighs.filter(s => s.i < i);
+      const lastLow = priorLows[priorLows.length - 1];
+      const lastHigh = priorHighs[priorHighs.length - 1];
+
+      // Induced low wicked through, then price holds above it -> bullish bias
+      if (lastLow && grabCandle.l < lastLow.price && holdCandle.l >= grabCandle.l && holdCandle.c > grabCandle.o) {
+        return { direction: 'buy', originLevel: grabCandle.l, grabCandle, holdCandle };
+      }
+      // Induced high wicked through, then price holds below it -> bearish bias
+      if (lastHigh && grabCandle.h > lastHigh.price && holdCandle.h <= grabCandle.h && holdCandle.c < grabCandle.o) {
+        return { direction: 'sell', originLevel: grabCandle.h, grabCandle, holdCandle };
+      }
     }
     return null;
   }
