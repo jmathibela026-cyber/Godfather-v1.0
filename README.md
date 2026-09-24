@@ -20,6 +20,31 @@ Everything else is unchanged: `scanner.js` still does the actual
 analysis locally (no AI/LLM in the loop), two bottom tabs (Home /
 Settings), Forex Majors symbol row, trade-count selector.
 
+## Two selectable strategies
+
+The Strategy chip row on Home now offers two independent rule
+engines, both in `scanner.js`, both pure local logic (no AI call):
+
+- **ICT / Smart Money** (`GodfatherEngine`) — the original engine:
+  HTF liquidity sweep → LTF CHoCH confirmation → order block/FVG →
+  OTE (61.8–78.6% fib) entry → SL beyond the order block → TP at the
+  next swing.
+- **Market Maker's Matrix** (`MarketMakerMatrixEngine`) — a second
+  model built around: a liquidity grab beyond a higher-timeframe
+  swing point (an induced high/low gets wicked through, then holds)
+  → a lower-timeframe break of structure *by candle body* in the
+  reversal direction → the last opposite-colored candle before that
+  break becomes the point of interest (POI) price is expected to
+  pull back ("mitigate") into → that POI must sit in discount (buys)
+  or premium (sells) of the current range → stop beyond the origin of
+  the move, target at the next liquidity pool. `Trend` is still a
+  disabled placeholder, same as before.
+
+Both engines return the same shape (`verdict`/`entry`/`sl`/`tp`/
+`confidence`/`strategy`/`reasoning`, or `{verdict:'wait', reason}`),
+so `app.js` just picks whichever one matches the selected chip before
+calling `.analyze(htfCandles, ltfCandles)`.
+
 ## Settings now has two sections
 
 1. **Live Chart Data — Twelve Data**: paste a Twelve Data API key

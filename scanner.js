@@ -203,3 +203,177 @@ const GodfatherEngine = (() => {
 })();
 
 window.GodfatherEngine = GodfatherEngine;
+
+/* ==========================================================================
+   MARKET MAKER'S MATRIX — Second Signal Engine
+   A second, independent rule set (selectable via the Strategy chips)
+   implementing an "inducement / liquidity grab" trading model:
+
+     1. HTF: a liquidity grab beyond a swing extreme (an induced low/high
+        gets wicked through, then price holds beyond it) sets the
+        directional bias.
+     2. LTF: that grab must cause a Break of Structure (BOS) — a candle
+        BODY closing beyond the nearest opposing structure point — in
+        the reversal direction.
+     3. The zone left behind (the last opposite-colored candle before
+        the breakout leg) becomes the Point of Interest (POI) —
+        price is expected to pull back ("mitigate") into it.
+     4. That POI must sit in discount (below the midpoint of the
+        current trading range) for a buy, or premium (above the
+        midpoint) for a sell — otherwise we wait for price to reach a
+        valid zone.
+     5. Target is the next liquidity pool (opposing swing point/equal
+        highs-lows) beyond entry; stop sits beyond the origin of the
+        move that caused the BOS.
+
+   Candle format: { t: timestamp, o, h, l, c }
+   ========================================================================== */
+
+const MarketMakerMatrixEngine = (() => {
+
+  const BUFFER_PCT = 0.0006;
+
+  function findSwings(candles, lookback = 2) {
+    const swingHighs = [];
+    const swingLows = [];
+    for (let i = lookback; i < candles.length - lookback; i++) {
+      const window = candles.slice(i - lookback, i + lookback + 1);
+      const c = candles[i];
+      if (c.h === Math.max(...window.map(w => w.h))) swingHighs.push({ i, price: c.h });
+      if (c.l === Math.min(...window.map(w => w.l))) swingLows.push({ i, price: c.l });
+    }
+    return { swingHighs, swingLows };
+  }
+
+  // ---- Step 1: liquidity grab beyond a swing extreme on the HTF ----
+  function detectLiquidityGrab(htfCandles) {
+    const { swingHighs, swingLows } = findSwings(htfCandles);
+    if (!swingHighs.length || !swingLows.length) return null;
+
+    const lastLow = swingLows[swingLows.length - 1];
+    const lastHigh = swingHighs[swingHighs.length - 1];
+    const last = htfCandles.length - 1;
+    const grabCandle = htfCandles[last - 1];
+    const holdCandle = htfCandles[last];
+    if (!grabCandle || !holdCandle) return null;
+
+    // Induced low wicked through, then price holds above it -> bullish bias
+    if (grabCandle.l < lastLow.price && holdCandle.l >= grabCandle.l && holdCandle.c > grabCandle.o) {
+      return { direction: 'buy', originLevel: grabCandle.l, grabCandle, holdCandle };
+    }
+    // Induced high wicked through, then price holds below it -> bearish bias
+    if (grabCandle.h > lastHigh.price && holdCandle.h <= grabCandle.h && holdCandle.c < grabCandle.o) {
+      return { direction: 'sell', originLevel: grabCandle.h, grabCandle, holdCandle };
+    }
+    return null;
+  }
+
+  // ---- Step 2: Break of Structure by candle BODY on the LTF ----
+  function detectBOS(ltfCandles, direction) {
+    const { swingHighs, swingLows } = findSwings(ltfCandles, 1);
+    const last = ltfCandles[ltfCandles.length - 1];
+
+    if (direction === 'buy' && swingHighs.length) {
+      const refHigh = swingHighs[swingHighs.length - 1];
+      if (last.c > refHigh.price) return { confirmed: true, breakIndex: ltfCandles.length - 1, refLevel: refHigh.price };
+    }
+    if (direction === 'sell' && swingLows.length) {
+      const refLow = swingLows[swingLows.length - 1];
+      if (last.c < refLow.price) return { confirmed: true, breakIndex: ltfCandles.length - 1, refLevel: refLow.price };
+    }
+    return { confirmed: false };
+  }
+
+  // ---- Step 3: POI — last opposite-colored candle before the breakout leg ----
+  function findPOI(ltfCandles, breakIndex, direction) {
+    const legStart = Math.max(0, breakIndex - 6);
+    const leg = ltfCandles.slice(legStart, breakIndex + 1);
+    let poi = null;
+    for (let i = leg.length - 2; i >= 0; i--) {
+      const isBull = leg[i].c > leg[i].o;
+      if (direction === 'buy' && !isBull) { poi = leg[i]; break; }
+      if (direction === 'sell' && isBull) { poi = leg[i]; break; }
+    }
+    if (!poi) poi = leg[0];
+    return poi;
+  }
+
+  // ---- Step 4: premium/discount filter against the current range ----
+  function inValidZone(poiMid, rangeHigh, rangeLow, direction) {
+    const mid = (rangeHigh + rangeLow) / 2;
+    return direction === 'buy' ? poiMid <= mid : poiMid >= mid;
+  }
+
+  // ---- Step 5: next liquidity pool as target ----
+  function findLiquidityTarget(candles, direction, fromPrice) {
+    const { swingHighs, swingLows } = findSwings(candles);
+    if (direction === 'buy') {
+      const targets = swingHighs.map(s => s.price).filter(p => p > fromPrice);
+      return targets.length ? Math.min(...targets) : fromPrice * 1.01;
+    } else {
+      const targets = swingLows.map(s => s.price).filter(p => p < fromPrice);
+      return targets.length ? Math.max(...targets) : fromPrice * 0.99;
+    }
+  }
+
+  function analyze(htfCandles, ltfCandles) {
+    const grab = detectLiquidityGrab(htfCandles);
+    if (!grab) {
+      return { verdict: 'wait', reason: 'No liquidity grab beyond a higher-timeframe swing point yet.' };
+    }
+
+    const bos = detectBOS(ltfCandles, grab.direction);
+    if (!bos.confirmed) {
+      return { verdict: 'wait', reason: `Liquidity grab found (${grab.direction.toUpperCase()}), waiting for a break of structure on the lower timeframe.` };
+    }
+
+    const poi = findPOI(ltfCandles, bos.breakIndex, grab.direction);
+    const poiMid = (poi.h + poi.l) / 2;
+
+    const { swingHighs, swingLows } = findSwings(ltfCandles);
+    const rangeHigh = swingHighs.length ? Math.max(...swingHighs.map(s => s.price)) : poi.h;
+    const rangeLow = swingLows.length ? Math.min(...swingLows.map(s => s.price)) : poi.l;
+
+    if (!inValidZone(poiMid, rangeHigh, rangeLow, grab.direction)) {
+      return { verdict: 'wait', reason: `POI formed but sits on the wrong side of the range (needs discount for buys, premium for sells) — waiting for price to reach a valid mitigation zone.` };
+    }
+
+    const entry = poiMid;
+    const buffer = entry * BUFFER_PCT;
+    const sl = grab.direction === 'buy'
+      ? Math.min(poi.l, grab.originLevel) - buffer
+      : Math.max(poi.h, grab.originLevel) + buffer;
+    const tp = findLiquidityTarget(htfCandles, grab.direction, entry);
+
+    let confidence = 50;
+    confidence += 12; // valid liquidity grab
+    confidence += 12; // confirmed BOS
+    confidence += 10; // POI in valid premium/discount zone
+    const rr = Math.abs(tp - entry) / Math.abs(entry - sl || 1);
+    confidence += Math.min(rr * 3, 16);
+    confidence = Math.max(40, Math.min(95, Math.round(confidence)));
+
+    const dir = grab.direction === 'buy' ? 'bullish' : 'bearish';
+    const action = grab.direction === 'buy' ? 'BUY' : 'SELL';
+    const reasoning = `A liquidity grab beyond the prior higher-timeframe ` +
+      `${grab.direction === 'buy' ? 'low' : 'high'} at ${grab.originLevel.toFixed(2)} induced the ` +
+      `opposite side before holding — a ${dir} setup. The lower timeframe broke structure in that ` +
+      `direction, leaving a point of interest at ${entry.toFixed(2)} for price to mitigate back into. ` +
+      `That zone sits in ${grab.direction === 'buy' ? 'discount' : 'premium'} of the current range, so ` +
+      `we're looking for a ${action} there, stop beyond the origin of the move at ${sl.toFixed(2)}, ` +
+      `targeting the next liquidity pool at ${tp.toFixed(2)}.`;
+
+    return {
+      verdict: grab.direction,
+      entry, sl, tp,
+      confidence,
+      strategy: "Market Maker's Matrix",
+      reasoning,
+    };
+  }
+
+  return { analyze, findSwings, detectLiquidityGrab, detectBOS };
+})();
+
+window.MarketMakerMatrixEngine = MarketMakerMatrixEngine;
+

@@ -8,6 +8,7 @@
     timeframe: 'M15',
     htfTimeframe: 'H4',
     tradeCount: 3,
+    strategy: 'ict',
   };
 
   const scanCanvas = document.getElementById('chartCanvas');
@@ -74,6 +75,7 @@
     loadChart();
   });
   wireChipGroup('tfChips', (v) => { state.timeframe = v; loadChart(); });
+  wireChipGroup('strategyChips', (v) => { state.strategy = v; });
   wireChipGroup('tradeCountRow', (v) => {
     state.tradeCount = parseInt(v, 10);
     document.getElementById('confirmTradeBtn').textContent = `Confirm & Execute ${v} Trade${v === '1' ? '' : 's'}`;
@@ -140,7 +142,8 @@
         // stale) instead of spending a second Twelve Data request on it.
         const htfCandles = await GodfatherAPI.getCandles(state.symbol, state.htfTimeframe, 100);
         const ltfCandles = currentCandles.length ? currentCandles : await GodfatherAPI.getCandles(state.symbol, state.timeframe, 100);
-        const signal = GodfatherEngine.analyze(htfCandles, ltfCandles);
+        const engine = state.strategy === 'mmm' ? MarketMakerMatrixEngine : GodfatherEngine;
+        const signal = engine.analyze(htfCandles, ltfCandles);
         showResult(signal, ltfCandles);
       } catch (e) {
         showError(e.message);
