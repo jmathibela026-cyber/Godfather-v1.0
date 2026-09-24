@@ -8,7 +8,7 @@
     timeframe: 'M15',
     htfTimeframe: 'H4',
     tradeCount: 3,
-    strategy: 'ict',
+    strategy: 'rsi',
   };
 
   const scanCanvas = document.getElementById('chartCanvas');
@@ -88,7 +88,7 @@
   async function loadChart() {
     try {
       chartStatus.textContent = 'Loading live candles…';
-      currentCandles = await GodfatherAPI.getCandles(state.symbol, state.timeframe, 100);
+      currentCandles = await GodfatherAPI.getCandles(state.symbol, state.timeframe, 150);
       liveChart.setCandles(currentCandles);
       const last = currentCandles[currentCandles.length - 1];
       document.getElementById('livePrice').textContent = last ? last.c.toFixed(2) : '—';
@@ -140,9 +140,10 @@
       try {
         // Reuse the LTF candles the live chart already has (at most 45s
         // stale) instead of spending a second Twelve Data request on it.
-        const htfCandles = await GodfatherAPI.getCandles(state.symbol, state.htfTimeframe, 100);
-        const ltfCandles = currentCandles.length ? currentCandles : await GodfatherAPI.getCandles(state.symbol, state.timeframe, 100);
-        const engine = state.strategy === 'mmm' ? MarketMakerMatrixEngine : GodfatherEngine;
+        const htfCandles = await GodfatherAPI.getCandles(state.symbol, state.htfTimeframe, 150);
+        const ltfCandles = currentCandles.length ? currentCandles : await GodfatherAPI.getCandles(state.symbol, state.timeframe, 150);
+        const ENGINES = { rsi: RSIEngine, ma: MovingAveragesEngine, stoch: StochasticEngine };
+        const engine = ENGINES[state.strategy] || RSIEngine;
         const signal = engine.analyze(htfCandles, ltfCandles);
         showResult(signal, ltfCandles);
       } catch (e) {

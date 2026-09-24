@@ -20,30 +20,28 @@ Everything else is unchanged: `scanner.js` still does the actual
 analysis locally (no AI/LLM in the loop), two bottom tabs (Home /
 Settings), Forex Majors symbol row, trade-count selector.
 
-## Two selectable strategies
+## Three selectable strategies
 
-The Strategy chip row on Home now offers two independent rule
-engines, both in `scanner.js`, both pure local logic (no AI call):
+The Strategy chip row on Home offers three independent momentum
+engines, all in `scanner.js`, all pure local math (no AI call). Each
+enters on momentum *resuming* out of an extreme rather than trying to
+call the exact top/bottom:
 
-- **ICT / Smart Money** (`GodfatherEngine`) — the original engine:
-  HTF liquidity sweep → LTF CHoCH confirmation → order block/FVG →
-  OTE (61.8–78.6% fib) entry → SL beyond the order block → TP at the
-  next swing.
-- **Market Maker's Matrix** (`MarketMakerMatrixEngine`) — a second
-  model built around: a liquidity grab beyond a higher-timeframe
-  swing point (an induced high/low gets wicked through, then holds)
-  → a lower-timeframe break of structure *by candle body* in the
-  reversal direction → the last opposite-colored candle before that
-  break becomes the point of interest (POI) price is expected to
-  pull back ("mitigate") into → that POI must sit in discount (buys)
-  or premium (sells) of the current range → stop beyond the origin of
-  the move, target at the next liquidity pool. `Trend` is still a
-  disabled placeholder, same as before.
+- **RSI Momentum** — enters when RSI(14) crosses back out of oversold
+  (<30) or overbought (>70).
+- **Moving Averages** — a 13/50/100 EMA stack; enters on a pullback to
+  the 13 EMA while the three EMAs are aligned in trend order, stop
+  beyond the 50 EMA.
+- **Stochastic Oscillator** — enters on a %K/%D crossover coming out
+  of the oversold (<20) or overbought (>80) zone.
 
-Both engines return the same shape (`verdict`/`entry`/`sl`/`tp`/
-`confidence`/`strategy`/`reasoning`, or `{verdict:'wait', reason}`),
-so `app.js` just picks whichever one matches the selected chip before
-calling `.analyze(htfCandles, ltfCandles)`.
+All three fetch the same live candles (needs ~100+ bars — the 150
+fetched per scan covers this), read the higher timeframe's trend as a
+soft confidence adjustment (not a hard filter, since these are
+reversal-style signals), and return the same shape (`verdict`/`entry`/
+`sl`/`tp`/`confidence`/`strategy`/`reasoning`, or `{verdict:'wait',
+reason}`) so `app.js` just calls whichever one matches the selected
+chip.
 
 ## Settings now has two sections
 
@@ -101,8 +99,9 @@ godfather/
    your account is provisioned elsewhere, update it or trade requests
    will fail to route.
 3. **Rate limits.** The free Twelve Data tier caps at 8 requests/min.
-   The 15s auto-refresh on Home uses 1 call per refresh — fine solo,
-   but leave multiple tabs open and you'll hit the limit.
+   Each scan now fetches 150-candle windows (needed for the 100 EMA) —
+   still 1 call per fetch regardless of size, so the same guidance
+   applies: fine solo, but multiple tabs will hit the limit.
 
 ## Still to build
 
